@@ -1,15 +1,13 @@
 import json
 import urllib.request
 import base64
-import requests
 import ssl
 import time
-import random
 from PIL import Image, ImageDraw, ImageFont
 import websocket
 import streamlit as st
 
-# ALL SYMBOLS FROM SCREENSHOTS MAPPED ACCURATELY
+# REAL ACCURATE DERIV SYMBOL MAPPINGS
 SYMBOL_MAP = {
     "Boom 1000 Index": "BOOM1000",
     "Crash 1000 Index": "CRASH1000",
@@ -24,17 +22,9 @@ SYMBOL_MAP = {
     "Step Index 500": "stpRNG",
     "Jump 25 Index": "JD25",
     "Volatility 75 Index": "R_75",
-    "Volatility 30 (1s) Index": "1HZ30V",
-    "Volatility 75 (1s) Index": "1HZ75V",
     "Volatility 10 Index": "R_10",
     "Volatility 25 Index": "R_25",
-    "Step Index": "stpRNG",
-    "DEX 600 UP Index": "DEX600",
-    "XAUUSD": "frxXAUUSD",
-    "XAUUSDmicro": "frxXAUUSD",
-    "Step Index 300": "stpRNG3",
-    "Vol over Boom 400": "VOB400",
-    "Boom 150 Index": "BOOM150"
+    "XAUUSD": "frxXAUUSD"
 }
 
 st.set_page_config(page_title="Quant HFT Institutional Matrix App", page_icon="🚀", layout="centered")
@@ -46,19 +36,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🚀 Quant HFT Matrix Engine")
-st.write("Institutional Grade SMC / Wyckoff / 100-Indicator Matrix Signal Generator")
+st.write("Real-Time Deriv Market SMC / Wyckoff / 100-Indicator Matrix")
 
 st.sidebar.header("⚙️ Institutional Settings")
 gemini_key = st.sidebar.text_input("Gemini API Key:", type="password")
 
 default_prompt = """Act as a Tier-1 Quantitative HFT Algorithmic Matrix powered by SMC/ICT, Wyckoff Schematics, and 100-Indicator Quantitative Engine.
 
-Analyze this M15 multi-timeframe chart snapshot chain for symbol: {symbol}.
+Analyze this REAL M15 market chart snapshot for symbol: {symbol}.
 
-⚡ CRITICAL MARKET PRICING METRICS:
-- Current Exact Price: {current_price}
-- Recent Swing High: {recent_high}
-- Recent Swing Low: {recent_low}
+⚡ REAL-TIME MARKET METRICS (FROM DERIV API):
+- Current Live Price: {current_price}
+- Recent High: {recent_high}
+- Recent Low: {recent_low}
 
 CRITICAL EXECUTION & FILTER RULES:
 1. UNMITIGATED ZONES ONLY: Check for unmitigated Supply & Demand zones, unmitigated Order Blocks (OB), Fair Value Gaps (FVG), and Inversion FVGs (iFVG). Mitigated zones MUST be rejected.
@@ -74,13 +64,11 @@ PROVIDE OUTPUT IN THIS EXACT STRUCTURE:
 - ICT/SMC Core: BOS, CHoCH, Displacement, Unmitigated OB/FVG/iFVG mapping.
 - Liquidity & Sweeps: Internal/External sweeps, Draw on Liquidity (DOL).
 - Wyckoff Phase: Phase A-E status, Spring/UTAD verification.
-- Price Action & Channels: TriSAD triangles, ZigZag extremes, Trendline status.
 
 2. 100-INDICATOR QUANTITATIVE ENGINE & INDICATOR STACK
 - Trend Cluster: EMA/SMA Ribbon, HAMA Candles, Cloud, SuperTrend, UT Bot alerts.
 - Momentum Cluster: RSI divergence, Stochastic cross, MACD displacement.
-- Volume Cluster: CMF, OBV, Volume Profile POC, MFI.
-- Volatility Cluster: VWAP, ATR, Bollinger width.
+- Volume & Volatility Cluster: VWAP, CMF, OBV, ATR.
 - Indicator Consensus: % Bullish vs % Bearish.
 
 3. ENTRY STRENGTH & CONFIDENCE SCORE
@@ -102,10 +90,10 @@ custom_prompt = st.sidebar.text_area("Custom AI Logic / Institutional Prompt:", 
 
 symbol = st.selectbox("Select Asset / Pair:", list(SYMBOL_MAP.keys()))
 
-def fetch_deriv_candles(symbol_code):
+def fetch_real_deriv_candles(symbol_code):
     ws_url = "wss://ws.derivws.com/websockets/v3?app_id=1089"
     try:
-        ws = websocket.create_connection(ws_url, timeout=6, sslopt={"cert_reqs": ssl.CERT_NONE})
+        ws = websocket.create_connection(ws_url, timeout=10, sslopt={"cert_reqs": ssl.CERT_NONE})
         payload = {
             "ticks_history": symbol_code,
             "adjust_start_time": 1,
@@ -115,31 +103,15 @@ def fetch_deriv_candles(symbol_code):
             "granularity": 900
         }
         ws.send(json.dumps(payload))
-        for _ in range(5):
+        for _ in range(8):
             res = json.loads(ws.recv())
             if "candles" in res and len(res["candles"]) > 0:
                 ws.close()
                 return res["candles"]
         ws.close()
-    except Exception:
+    except Exception as e:
         pass
-
-    candles = []
-    base_price = 135000.0 if "Jump" in symbol_code or "1000" in symbol_code else 2600.0
-    curr_time = int(time.time()) - (40 * 900)
-    for i in range(40):
-        chg = random.uniform(-45.0, 45.0)
-        c_open = base_price
-        c_close = c_open + chg
-        candles.append({
-            'open': round(c_open, 2),
-            'high': round(max(c_open, c_close) + 15, 2),
-            'low': round(min(c_open, c_close) - 15, 2),
-            'close': round(c_close, 2),
-            'epoch': curr_time + (i * 900)
-        })
-        base_price = c_close
-    return candles
+    return None
 
 def draw_candlestick_chart(candles):
     width, height = 750, 400
@@ -215,50 +187,32 @@ def get_ai_signal(img_path, candles, asset_name, api_key, prompt_template):
         }
         try:
             req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, context=context, timeout=14) as resp:
+            with urllib.request.urlopen(req, context=context, timeout=15) as resp:
                 res_data = json.loads(resp.read().decode('utf-8'))
                 return res_data['candidates'][0]['content']['parts'][0]['text']
         except Exception:
             continue
 
-    trend_up = curr_p > candles[-10]['close']
-    sig = "BUY" if ("Boom" in asset_name or trend_up) else "SELL"
-    tp1 = round(curr_p * 1.012, 2) if sig == "BUY" else round(curr_p * 0.988, 2)
-    tp2 = round(curr_p * 1.025, 2) if sig == "BUY" else round(curr_p * 0.975, 2)
-    sl = round(r_low - 5.0, 2) if sig == "BUY" else round(r_high + 5.0, 2)
-
-    return f"""### 1. METHODOLOGY SHAKE
-- SMC/ICT: Unmitigated Order Block identified near {curr_p}. Liquidity sweep executed.
-- Wyckoff Phase: Phase D confirmed with Spring/LPS retest.
-
-### 2. 100-INDICATOR CONSENSUS
-- Trend & Momentum: HAMA Candles Green, UT Bot Buy Signal Active, RSI 58.
-- Score: 87/100 Aligned (87% Bullish Confluence)
-
-### 3. ENTRY STRENGTH
-- Score: 92%
-- Confidence: 9/10
-
-🔔 SMT
-📊 Asset: {asset_name}
-⏱️ Timeframe: M15
-📈/📉 Signal: {sig}
-🎯 TP1: {tp1}
-🎯 TP2: {tp2} 🔥🔥
-⚪ SL: {sl}
-💡 Entry Logic & Reasons: Unmitigated Demand Zone + Liquidity Sweep + Wyckoff Phase D LPS Confirmation."""
+    return "⚠️ AI Analysis response fail ho gaya. Retry karein."
 
 if st.button("⚡ GENERATE SIGNAL NOW"):
     if not gemini_key:
         st.error("⚠️ Pehle Sidebar mein Gemini API Key darj karein!")
     else:
-        with st.spinner("⏳ Analyzing Institutional Orderflow, Unmitigated Zones & 100-Indicator Matrix..."):
+        with st.spinner("⏳ Fetching REAL Deriv Live Market Data..."):
             deriv_symbol = SYMBOL_MAP[symbol]
-            candles = fetch_deriv_candles(deriv_symbol)
-            chart_path = draw_candlestick_chart(candles)
+            candles = fetch_real_deriv_candles(deriv_symbol)
             
-            signal_res = get_ai_signal(chart_path, candles, symbol, gemini_key, custom_prompt)
-            
-            st.image(chart_path, caption=f"M15 Live Institutional Chart ({symbol})", use_container_width=True)
-            st.markdown("### 🔔 HFT Quantitative Matrix Output")
-            st.info(signal_res)
+            if not candles:
+                st.error(f"❌ Real market data connection fail ho gaya. Koshish karein dobara button dabayein.")
+            else:
+                live_price = candles[-1]['close']
+                st.success(f"✅ Real Live Price Fetched: **{live_price}**")
+                
+                chart_path = draw_candlestick_chart(candles)
+                
+                signal_res = get_ai_signal(chart_path, candles, symbol, gemini_key, custom_prompt)
+                
+                st.image(chart_path, caption=f"M15 Real Live Chart ({symbol}) - Current Price: {live_price}", use_container_width=True)
+                st.markdown("### 🔔 HFT Quantitative Matrix Output")
+                st.info(signal_res)
