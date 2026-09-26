@@ -171,6 +171,7 @@ def get_ai_signal(img_path, candles, asset_name, api_key, prompt_template):
     models_to_try = ["gemini-1.5-flash", "gemini-2.5-flash", "gemini-1.5-pro"]
     context = ssl._create_unverified_context()
 
+    last_error = ""
     for model in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         payload = {
@@ -183,13 +184,15 @@ def get_ai_signal(img_path, candles, asset_name, api_key, prompt_template):
         }
         try:
             req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, context=context, timeout=20) as resp:
+            with urllib.request.urlopen(req, context=context, timeout=25) as resp:
                 res_data = json.loads(resp.read().decode('utf-8'))
-                return res_data['candidates'][0]['content']['parts'][0]['text']
-        except Exception:
+                if 'candidates' in res_data and len(res_data['candidates']) > 0:
+                    return "SUCCESS", res_data['candidates'][0]['content']['parts'][0]['text']
+        except Exception as e:
+            last_error = str(e)
             continue
 
-    return "⚠️ AI Analysis response failed. Please retry."
+    return "ERROR", f"AI Request Failed. Details: {last_error}"
 
 if st.button("⚡ GENERATE SIGNAL NOW"):
     if not gemini_key:
@@ -202,8 +205,12 @@ if st.button("⚡ GENERATE SIGNAL NOW"):
             
             with st.spinner("⏳ Analyzing Chart via Gemini AI..."):
                 chart_path = draw_candlestick_chart(candles)
-                signal_res = get_ai_signal(chart_path, candles, symbol, gemini_key, custom_prompt)
+                status, signal_res = get_ai_signal(chart_path, candles, symbol, gemini_key, custom_prompt)
                 
                 st.image(chart_path, caption=f"M15 Live Chart Matrix ({symbol}) - Exact Price: {live_price:.2f}", use_container_width=True)
                 st.markdown("### 🔔 HFT Quantitative Matrix Output")
-                st.info(signal_res)
+                if status == "SUCCESS":
+                    st.info(signal_res)
+                else:
+                    st.error(signal_res)
+                    st.warning("💡 Tip: Apni Gemini API Key check karein ke woh theek copy hui hai ya active hai.")
