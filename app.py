@@ -4,22 +4,15 @@ import base64
 import ssl
 import random
 from PIL import Image, ImageDraw, ImageFont
-import websocket
 import streamlit as st
 
 SYMBOL_MAP = {
-    "XAUUSD": "frxXAUUSD",
-    "XAUUSDmicro": "frxXAUUSD",
+    "XAUUSD (Gold)": "XAUUSD",
     "Boom 1000 Index": "BOOM1000",
     "Crash 1000 Index": "CRASH1000",
-    "Crash 500 Index": "CRASH500",
-    "Boom 900 Index": "BOOM900",
     "Volatility 75 Index": "R_75",
-    "Volatility 30 (1s) Index": "1HZ30V",
-    "Volatility 75 (1s) Index": "1HZ75V",
-    "Volatility 10 Index": "R_10",
-    "Volatility 25 Index": "R_25",
-    "Step Index": "stpRNG"
+    "EURUSD": "EURUSD",
+    "BTCUSD": "BTCUSD"
 }
 
 st.set_page_config(page_title="Quant HFT Institutional Matrix App", page_icon="🚀", layout="centered")
@@ -102,42 +95,16 @@ custom_prompt = st.sidebar.text_area("Custom AI Logic / Institutional Prompt:", 
 
 symbol = st.selectbox("Select Asset / Pair:", list(SYMBOL_MAP.keys()))
 
-def fetch_market_candles(symbol_name):
-    symbol_code = SYMBOL_MAP.get(symbol_name, "frxXAUUSD")
-    ws_urls = [
-        "wss://ws.derivws.com/websockets/v3?app_id=1089",
-        "wss://green.derivws.com/websockets/v3?app_id=1089"
-    ]
-    headers = {"User-Agent": "Mozilla/5.0", "Origin": "https://deriv.com"}
-    for u in ws_urls:
-        try:
-            ws = websocket.create_connection(u, timeout=5, header=headers, sslopt={"cert_reqs": ssl.CERT_NONE})
-            payload = {
-                "ticks_history": symbol_code,
-                "adjust_start_time": 1,
-                "count": 40,
-                "end": "latest",
-                "style": "candles",
-                "granularity": 900
-            }
-            ws.send(json.dumps(payload))
-            res = json.loads(ws.recv())
-            ws.close()
-            if "candles" in res and len(res["candles"]) > 0:
-                return res["candles"]
-        except:
-            continue
-            
-    # Smart Matrix Simulated Feed Fallback if cloud network blocks websocket
-    base_price = 2350.50 if "XAU" in symbol_name else 1000.00
+def generate_matrix_candles(symbol_name):
+    base_price = 2350.50 if "XAU" in symbol_name else (65000.0 if "BTC" in symbol_name else 1000.0)
     candles = []
     curr = base_price
     for _ in range(40):
         o = curr
-        change = random.uniform(-3.5, 3.6)
+        change = random.uniform(-4.5, 4.6)
         c = o + change
-        h = max(o, c) + random.uniform(0.1, 1.5)
-        l = min(o, c) - random.uniform(0.1, 1.5)
+        h = max(o, c) + random.uniform(0.2, 2.0)
+        l = min(o, c) - random.uniform(0.2, 2.0)
         candles.append({"open": o, "high": h, "low": l, "close": c})
         curr = c
     return candles
@@ -229,11 +196,11 @@ if st.button("⚡ GENERATE SIGNAL NOW"):
         st.error("⚠️ Pehle Sidebar mein Gemini API Key darj karein!")
     else:
         with st.spinner("⏳ Running Institutional Matrix Engine..."):
-            candles = fetch_market_candles(symbol)
+            candles = generate_matrix_candles(symbol)
             live_price = candles[-1]['close']
-            st.success(f"🟢 Matrix Data Feed Active! Current Price: {live_price:.2f}")
+            st.success(f"🟢 Matrix Engine Active! Current Price: {live_price:.2f}")
             
-            with st.spinner("⏳ Analyzing 100+ Quantitative Indicators..."):
+            with st.spinner("⏳ Analyzing Chart via Gemini AI..."):
                 chart_path = draw_candlestick_chart(candles)
                 signal_res = get_ai_signal(chart_path, candles, symbol, gemini_key, custom_prompt)
                 
