@@ -49,7 +49,6 @@ st.write("Live Real-Time Market SMC / Wyckoff / 100-Indicator Matrix")
 st.sidebar.header("⚙️ Institutional Settings")
 gemini_key = st.sidebar.text_input("Gemini API Key:", type="password")
 
-# EXACT PROMPT PROVIDED BY YOU
 default_prompt = """Act as a Tier-1 Quantitative HFT (High-Frequency Trading) Algorithmic Matrix. I am providing you with a multi-timeframe chart snapshot chain (D1, H4, H1, M15, M5, M1). Your mission is to extract the complete raw mathematical data of 100+ Quantitative Indicators and blend it with every major institutional trading methodology into a single "Institutional Alpha Shake" to generate a definitive, high-probability execution signal.
 
 Analyze the chart assets using the complete suite of the following layers simultaneously:
@@ -117,14 +116,21 @@ custom_prompt = st.sidebar.text_area("Custom AI Logic / Institutional Prompt:", 
 symbol = st.selectbox("Select Asset / Pair:", list(SYMBOL_MAP.keys()))
 
 def fetch_strict_real_deriv_candles(symbol_code):
-    # STRICT MODE: No fake prices, no fallback. 
     ws_urls = [
         "wss://ws.derivws.com/websockets/v3?app_id=1089",
-        "wss://ws.binaryws.com/websockets/v3?app_id=1089"
+        "wss://ws.binaryws.com/websockets/v3?app_id=1089",
+        "wss://ws.deriv.com/websockets/v3?app_id=1089"
     ]
+    
+    # Headers added to bypass Streamlit Cloud block
+    headers = [
+        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Origin: https://app.deriv.com"
+    ]
+    
     for url in ws_urls:
         try:
-            ws = websocket.create_connection(url, timeout=7, sslopt={"cert_reqs": ssl.CERT_NONE})
+            ws = websocket.create_connection(url, timeout=10, sslopt={"cert_reqs": ssl.CERT_NONE}, header=headers)
             payload = {
                 "ticks_history": symbol_code,
                 "adjust_start_time": 1,
@@ -136,15 +142,17 @@ def fetch_strict_real_deriv_candles(symbol_code):
             ws.send(json.dumps(payload))
             for _ in range(5):
                 res = json.loads(ws.recv())
+                if "error" in res:
+                    ws.close()
+                    return "ERROR", res["error"]["message"]
                 if "candles" in res and len(res["candles"]) > 0:
                     ws.close()
-                    return res["candles"]
+                    return "SUCCESS", res["candles"]
             ws.close()
-        except Exception:
+        except Exception as e:
             continue
-    
-    # If both URLs fail, strictly return None (Will trigger error in UI, NO FAKE DATA)
-    return None
+            
+    return "FAIL", None
 
 def draw_candlestick_chart(candles):
     width, height = 750, 400
@@ -220,7 +228,7 @@ def get_ai_signal(img_path, candles, asset_name, api_key, prompt_template):
         }
         try:
             req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, context=context, timeout=15) as resp:
+            with urllib.request.urlopen(req, context=context, timeout=20) as resp:
                 res_data = json.loads(resp.read().decode('utf-8'))
                 return res_data['candidates'][0]['content']['parts'][0]['text']
         except Exception:
@@ -234,13 +242,17 @@ if st.button("⚡ GENERATE SIGNAL NOW"):
     else:
         with st.spinner("⏳ Fetching 100% Real Live Deriv Market Data..."):
             deriv_symbol = SYMBOL_MAP[symbol]
-            candles = fetch_strict_real_deriv_candles(deriv_symbol)
+            status, result = fetch_strict_real_deriv_candles(deriv_symbol)
             
-            if candles is None:
-                st.error("❌ STRICT MODE ERROR: Live market data fetch fail ho gaya (Connection Blocked). App koi fake price generate nahi karegi. Kripya dobara try karein ya Deriv server status check karein.")
+            if status == "ERROR":
+                st.error(f"❌ DERIV SERVER ERROR: {result}")
+                st.warning("⚠️ Note: Forex markets like XAUUSD are closed on weekends. Try a Synthetic Index like Boom/Crash/Volatility.")
+            elif status == "FAIL" or result is None:
+                st.error("❌ STRICT MODE ERROR: Live market data fetch fail ho gaya (Connection Blocked). App koi fake price generate nahi karegi.")
             else:
+                candles = result
                 live_price = candles[-1]['close']
-                st.success(f"🟢 100% Live Deriv Market Data Fetched Successfully! Current Price: {live_price}")
+                st.success(f"🟢 100% Live Deriv Market Data Fetched! Current Price: {live_price}")
                 
                 with st.spinner("⏳ Running 100-Indicator Institutional Matrix Engine..."):
                     chart_path = draw_candlestick_chart(candles)
